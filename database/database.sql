@@ -9,18 +9,51 @@ CREATE TABLE generos (
 	descripcion VARCHAR(20) NOT NULL
 );
 
--- Tabla de usuarios (con la columna genero)
+-- Tabla de países
+CREATE TABLE paises (
+	id INT PRIMARY KEY,
+	nombre VARCHAR(100) NOT NULL
+);
+
+-- Tabla de departamentos
+CREATE TABLE departamentos (
+	id INT PRIMARY KEY,
+	nombre VARCHAR(100) NOT NULL,
+	pais_id INT,
+	FOREIGN KEY (pais_id) REFERENCES paises(id)
+);
+
+-- Tabla de ciudades
+CREATE TABLE ciudades (
+	id INT PRIMARY KEY,
+	nombre VARCHAR(100) NOT NULL,
+	departamento_id INT,
+	FOREIGN KEY (departamento_id) REFERENCES departamentos(id)
+);
+
+-- Tabla de usuarios
 CREATE TABLE usuarios (
 	id INT PRIMARY KEY,
 	nombre VARCHAR(255),
 	edad INT,
-	genero_id INT,  
+	genero INT,
 	intereses TEXT,
 	carrera VARCHAR(255),
 	frase TEXT,
 	likes_diarios INT,
 	max_likes_diarios INT,
-	FOREIGN KEY (genero_id) REFERENCES genero(id)
+	ciudad_id INT,
+	FOREIGN KEY (genero) REFERENCES generos(id),
+	FOREIGN KEY (ciudad_id) REFERENCES ciudades(id)
+);
+
+-- Tabla de login
+CREATE TABLE login (
+	id INT PRIMARY KEY,
+	usuario_id INT,
+	correo VARCHAR(255) UNIQUE NOT NULL,
+	contrasena VARCHAR(255) NOT NULL,
+	FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 );
 
 -- Tabla de interacciones
