@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/camper/Documentos/fabo/campusLove/campusLove.csproj": {}
+    "/home/camper/Descargas/campusLove/campusLove.csproj": {}
   },
   "projects": {
-    "/home/camper/Documentos/fabo/campusLove/campusLove.csproj": {
+    "/home/camper/Descargas/campusLove/campusLove.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/camper/Documentos/fabo/campusLove/campusLove.csproj",
+        "projectUniqueName": "/home/camper/Descargas/campusLove/campusLove.csproj",
         "projectName": "campusLove",
-        "projectPath": "/home/camper/Documentos/fabo/campusLove/campusLove.csproj",
+        "projectPath": "/home/camper/Descargas/campusLove/campusLove.csproj",
         "packagesPath": "/home/camper/.nuget/packages/",
-        "outputPath": "/home/camper/Documentos/fabo/campusLove/obj/",
+        "outputPath": "/home/camper/Descargas/campusLove/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/camper/.nuget/NuGet/NuGet.Config"
