@@ -1,0 +1,18 @@
+# Archivos de compilación
+obj/
+bin/
+*.dll
+*.pdb
+*.cache
+
+# Archivos de IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db 
