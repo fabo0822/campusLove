@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using campusLove.domain.entities;
 
 namespace campusLove.domain.ports
 {
@@ -12,6 +13,5 @@ namespace campusLove.domain.ports
         Task AddAsync(Pais pais);
         Task UpdateAsync(Pais pais);
         Task DeleteAsync(int id);
-    }
     }
 }

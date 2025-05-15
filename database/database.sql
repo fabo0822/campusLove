@@ -1,6 +1,6 @@
-CREATE DATABASE campusLove,
+CREATE DATABASE campusLove;
 
-USE DATABASE campusLove,	
+USE  campusLove;	
 
 
 -- Tabla de géneros
@@ -33,7 +33,7 @@ CREATE TABLE ciudades (
 
 -- Tabla de usuarios
 CREATE TABLE usuarios (
-	id INT PRIMARY KEY,
+	id INT AUTO_INCREMENT PRIMARY KEY,
 	nombre VARCHAR(255),
 	edad INT,
 	genero INT,
@@ -49,7 +49,7 @@ CREATE TABLE usuarios (
 
 -- Tabla de login
 CREATE TABLE login (
-	id INT PRIMARY KEY,
+	id INT AUTO_INCREMENT PRIMARY KEY,
 	usuario_id INT,
 	correo VARCHAR(255) UNIQUE NOT NULL,
 	contrasena VARCHAR(255) NOT NULL,

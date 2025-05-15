@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "M6zt2yUXyLA=",
+  "dgSpecHash": "z4ljjCFVriI=",
   "success": true,
-  "projectFilePath": "/home/camper/Descargas/campusLove/campusLove.csproj",
+  "projectFilePath": "/home/camper/campusLove/campusLove.csproj",
   "expectedPackageFiles": [
     "/home/camper/.nuget/packages/bouncycastle.cryptography/2.5.1/bouncycastle.cryptography.2.5.1.nupkg.sha512",
     "/home/camper/.nuget/packages/google.protobuf/3.30.0/google.protobuf.3.30.0.nupkg.sha512",
