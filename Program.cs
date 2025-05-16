@@ -8,7 +8,7 @@ namespace campusLove
 {
     class Program
     {
-        private static string connectionString = "Server=localhost;Database=campusLove;User=campus2023;Password=campus2023;";
+        private static string connectionString = "Server=localhost;Database=campusLove;User=root;Password=1234;";
         private static int currentUserId = -1;
         private static readonly MySqlDbFactory _dbFactory;
         private static readonly UsuarioService _usuarioService;

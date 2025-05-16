@@ -7,9 +7,10 @@ namespace campusLove.domain.entities
 {
     public class Login
     {
-    public int Id { get; set; }
-    public int UsuarioId { get; set; }
-    public string Correo { get; set; }
-    public string Contrasena { get; set; }
+        public int Id { get; set; }
+        public int UsuarioId { get; set; }
+        public Usuario Usuario { get; set; }
+        public string Correo { get; set; }
+        public string Contrasena { get; set; }
     }
 }
