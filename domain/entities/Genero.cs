@@ -7,7 +7,8 @@ namespace campusLove.domain.entities
 {
     public class Genero
     {
-    public int Id { get; set; }
-    public string Descripcion { get; set; }  
+        public int Id { get; set; }
+        public string? Descripcion { get; set; }
+        public ICollection<Usuario> Usuarios { get; set; }
     }
 }
