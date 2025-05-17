@@ -58,7 +58,7 @@ CREATE TABLE login (
 
 -- Tabla de interacciones
 CREATE TABLE interacciones (
-	id INT PRIMARY KEY,
+	id INT AUTO_INCREMENT PRIMARY KEY,
 	usuario_id INT,
 	objetivo_usuario_id INT,
 	le_gusto BOOLEAN,
@@ -69,7 +69,7 @@ CREATE TABLE interacciones (
 
 -- Tabla de coincidencias
 CREATE TABLE coincidencias (
-	id INT PRIMARY KEY,
+	id INT AUTO_INCREMENT PRIMARY KEY,
 	usuario1_id INT,
 	usuario2_id INT,
 	fecha_coincidencia DATETIME,
@@ -79,7 +79,7 @@ CREATE TABLE coincidencias (
 
 -- Tabla de estadísticas
 CREATE TABLE estadisticas (
-	id INT PRIMARY KEY,
+	id INT AUTO_INCREMENT PRIMARY KEY,
 	usuario_id INT,
 	likes_recibidos INT,
 	coincidencias_totales INT,

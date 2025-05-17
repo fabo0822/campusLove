@@ -39,20 +39,50 @@ namespace campusLove.application.services
             using (var conn = _dbFactory.CreateConnection())
             {
                 conn.Open();
-                var cmd = new MySqlCommand(
+                
+                // Primero verificamos si ya existe una coincidencia para evitar duplicados
+                var cmdVerificarExistente = new MySqlCommand(
+                    @"SELECT COUNT(*) FROM coincidencias 
+                    WHERE (usuario1_id = @usuarioId AND usuario2_id = @objetivoId)
+                    OR (usuario1_id = @objetivoId AND usuario2_id = @usuarioId)", 
+                    (MySqlConnection)conn);
+
+                cmdVerificarExistente.Parameters.AddWithValue("@usuarioId", usuarioId);
+                cmdVerificarExistente.Parameters.AddWithValue("@objetivoId", objetivoId);
+
+                var coincidenciaExistente = Convert.ToInt32(await cmdVerificarExistente.ExecuteScalarAsync());
+                if (coincidenciaExistente > 0)
+                {
+                    return; // Ya existe una coincidencia, no hacemos nada
+                }
+
+                // Verificamos si hay un like mutuo
+                var cmdVerificarLike = new MySqlCommand(
                     @"SELECT COUNT(*) FROM interacciones 
                     WHERE usuario_id = @objetivoId 
                     AND objetivo_usuario_id = @usuarioId 
                     AND le_gusto = true", 
                     (MySqlConnection)conn);
 
-                cmd.Parameters.AddWithValue("@usuarioId", usuarioId);
-                cmd.Parameters.AddWithValue("@objetivoId", objetivoId);
+                cmdVerificarLike.Parameters.AddWithValue("@usuarioId", usuarioId);
+                cmdVerificarLike.Parameters.AddWithValue("@objetivoId", objetivoId);
 
-                var coincidencia = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                var coincidencia = Convert.ToInt32(await cmdVerificarLike.ExecuteScalarAsync());
                 if (coincidencia > 0)
                 {
                     await RegistrarCoincidencia(usuarioId, objetivoId);
+                    
+                    // Actualizamos las estadísticas de ambos usuarios
+                    var cmdActualizarEstadisticas = new MySqlCommand(
+                        @"UPDATE estadisticas 
+                        SET coincidencias_totales = coincidencias_totales + 1 
+                        WHERE usuario_id IN (@usuarioId, @objetivoId)", 
+                        (MySqlConnection)conn);
+
+                    cmdActualizarEstadisticas.Parameters.AddWithValue("@usuarioId", usuarioId);
+                    cmdActualizarEstadisticas.Parameters.AddWithValue("@objetivoId", objetivoId);
+                    
+                    await cmdActualizarEstadisticas.ExecuteNonQueryAsync();
                 }
             }
         }
