@@ -125,8 +125,95 @@ namespace campusLove.application.services
 
         public async Task ActualizarEstadisticas(int usuarioId)
         {
-            // La actualización ahora es en tiempo real a través de las consultas
-            await Task.CompletedTask;
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                
+                // Iniciar una transacción para mantener la integridad de los datos
+                using (var transaction = conn.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1. Calcular estadísticas actuales
+                        var cmd = new MySqlCommand(@"
+                            SELECT 
+                                COUNT(DISTINCT CASE WHEN i.le_gusto = 1 THEN i.usuario_id END) as likes_recibidos,
+                                COUNT(DISTINCT c.id) as coincidencias_totales
+                            FROM usuarios u
+                            LEFT JOIN interacciones i ON u.id = i.objetivo_usuario_id
+                            LEFT JOIN coincidencias c ON (u.id = c.usuario1_id OR u.id = c.usuario2_id)
+                            WHERE u.id = @usuarioId
+                            GROUP BY u.id", (MySqlConnection)conn);
+
+                        cmd.Parameters.AddWithValue("@usuarioId", usuarioId);
+                        cmd.Transaction = (MySqlTransaction)transaction;
+
+                        int likesRecibidos = 0;
+                        int coincidenciasTotales = 0;
+
+                        using (var reader = await cmd.ExecuteReaderAsync())
+                        {
+                            if (await reader.ReadAsync())
+                            {
+                                likesRecibidos = reader.GetInt32(reader.GetOrdinal("likes_recibidos"));
+                                coincidenciasTotales = reader.GetInt32(reader.GetOrdinal("coincidencias_totales"));
+                            }
+                        }
+
+                        // 2. Verificar si existe un registro de estadísticas para este usuario
+                        var cmdVerificar = new MySqlCommand(
+                            "SELECT COUNT(*) FROM estadisticas WHERE usuario_id = @usuarioId", 
+                            (MySqlConnection)conn);
+                        
+                        cmdVerificar.Parameters.AddWithValue("@usuarioId", usuarioId);
+                        cmdVerificar.Transaction = (MySqlTransaction)transaction;
+                        
+                        int existeRegistro = Convert.ToInt32(await cmdVerificar.ExecuteScalarAsync());
+                        
+                        if (existeRegistro > 0)
+                        {
+                            // 3a. Actualizar estadísticas existentes
+                            var cmdActualizar = new MySqlCommand(
+                                @"UPDATE estadisticas 
+                                SET likes_recibidos = @likesRecibidos, 
+                                    coincidencias_totales = @coincidenciasTotales 
+                                WHERE usuario_id = @usuarioId", 
+                                (MySqlConnection)conn);
+                            
+                            cmdActualizar.Parameters.AddWithValue("@usuarioId", usuarioId);
+                            cmdActualizar.Parameters.AddWithValue("@likesRecibidos", likesRecibidos);
+                            cmdActualizar.Parameters.AddWithValue("@coincidenciasTotales", coincidenciasTotales);
+                            cmdActualizar.Transaction = (MySqlTransaction)transaction;
+                            
+                            await cmdActualizar.ExecuteNonQueryAsync();
+                        }
+                        else
+                        {
+                            // 3b. Crear nuevo registro de estadísticas
+                            var cmdInsertar = new MySqlCommand(
+                                @"INSERT INTO estadisticas (usuario_id, likes_recibidos, coincidencias_totales) 
+                                VALUES (@usuarioId, @likesRecibidos, @coincidenciasTotales)", 
+                                (MySqlConnection)conn);
+                            
+                            cmdInsertar.Parameters.AddWithValue("@usuarioId", usuarioId);
+                            cmdInsertar.Parameters.AddWithValue("@likesRecibidos", likesRecibidos);
+                            cmdInsertar.Parameters.AddWithValue("@coincidenciasTotales", coincidenciasTotales);
+                            cmdInsertar.Transaction = (MySqlTransaction)transaction;
+                            
+                            await cmdInsertar.ExecuteNonQueryAsync();
+                        }
+                        
+                        // Confirmar cambios
+                        transaction.Commit();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Revertir cambios en caso de error
+                        transaction.Rollback();
+                        Console.WriteLine($"Error al actualizar estadísticas: {ex.Message}");
+                    }
+                }
+            }
         }
     }
 } 
