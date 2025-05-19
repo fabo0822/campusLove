@@ -1,7 +1,9 @@
 using System;
 using System.Threading.Tasks;
+using System.Linq;
 using MySql.Data.MySqlClient;
 using campusLove.infraestructure.mysql;
+using campusLove.domain.strategy;
 using Spectre.Console;
 using System.Collections.Generic;
 
@@ -112,14 +114,15 @@ namespace campusLove.application.services
                 new SelectionPrompt<string>()
                     .Title("[bold]¿Qué deseas hacer?[/]")
                     .PageSize(10)
-                    .HighlightStyle(new Style(foreground: Color.Fuchsia))
+                    .HighlightStyle(new Style(foreground: Color.Green))
                     .AddChoices(new[]
                     {
-                        "1. Ver perfiles y dar Like o Dislike",
-                        "2. Ver mis coincidencias (matches)",
-                        "3. Ver estadísticas del sistema",
-                        "4. Cerrar Sesión",
-                        "5. Salir"
+                        "1. Ver perfiles",
+                        "2. Ver coincidencias",
+                        "3. Ver estadísticas",
+                        "4. Elegir estrategia de emparejamiento",
+                        "5. Cambiar usuario (Modo multicliente)",
+                        "6. Cerrar sesión"
                     }));
             
             // Extraer el número de la opción
@@ -137,10 +140,13 @@ namespace campusLove.application.services
                     await VerEstadisticas();
                     break;
                 case "4":
-                    _currentUserId = -1;
+                    await SeleccionarEstrategiaEmparejamiento();
                     break;
                 case "5":
-                    Environment.Exit(0);
+                    ModoMulticliente();
+                    break;
+                case "6":
+                    _currentUserId = -1;
                     break;
                 default:
                     AnsiConsole.MarkupLine("[red]Opción no válida. Presione cualquier tecla para continuar.[/]");
@@ -646,6 +652,10 @@ namespace campusLove.application.services
             // Si llegamos aquí, el usuario ha seleccionado un perfil para dar like o dislike
             if (targetId > 0)
             {
+                // Obtener información de likes disponibles antes de la acción
+                var likesInfo = leGusto ? await _interaccionService.ObtenerLikesInfo(_currentUserId) : (0, 0);
+                bool interaccionExitosa = true;
+                
                 // Mostrar un spinner mientras se registra la interacción
                 await AnsiConsole.Status()
                     .StartAsync("Registrando interacción...", async ctx => 
@@ -653,19 +663,51 @@ namespace campusLove.application.services
                         ctx.Spinner(Spinner.Known.Dots);
                         ctx.SpinnerStyle(Style.Parse("green"));
                         
-                        // Registrar la interacción
-                        await _interaccionService.RegistrarInteraccion(_currentUserId, targetId, leGusto);
+                        // Registrar la interacción (ahora devuelve un valor booleano)
+                        interaccionExitosa = await _interaccionService.RegistrarInteraccion(_currentUserId, targetId, leGusto);
                         
-                        // Verificar coincidencia si le gustó
-                        if (leGusto)
+                        if (interaccionExitosa)
                         {
-                            await _interaccionService.VerificarCoincidencia(_currentUserId, targetId);
+                            // Verificar coincidencia si le gustó
+                            if (leGusto)
+                            {
+                                await _interaccionService.VerificarCoincidencia(_currentUserId, targetId);
+                            }
+                            
+                            // Actualizar estadísticas
+                            await _estadisticaService.ActualizarEstadisticas(_currentUserId);
+                            await _estadisticaService.ActualizarEstadisticas(targetId);
                         }
-                        
-                        // Actualizar estadísticas
-                        await _estadisticaService.ActualizarEstadisticas(_currentUserId);
-                        await _estadisticaService.ActualizarEstadisticas(targetId);
                     });
+                
+                // Si no se pudo registrar la interacción por límite de likes
+                if (leGusto && !interaccionExitosa)
+                {
+                    // Mostrar mensaje de error por límite alcanzado
+                    var limitPanel = new Panel(
+                        $"[bold red]¡Has alcanzado tu límite diario de likes ({likesInfo.Item2})![/]\n" +
+                        "[yellow]Vuelve mañana para seguir dando likes a nuevos perfiles.[/]");
+                    limitPanel.Border = BoxBorder.Rounded;
+                    limitPanel.Padding = new Padding(2, 1, 2, 1);
+                    limitPanel.BorderColor(Color.Red);
+                    AnsiConsole.Write(limitPanel);
+                    
+                    // Preguntar si desea seguir viendo perfiles o volver al menú principal
+                    var opcionContinuarSinLikes = AnsiConsole.Prompt(
+                        new SelectionPrompt<string>()
+                            .Title("[bold]¿Qué deseas hacer ahora?[/]")
+                            .PageSize(3)
+                            .HighlightStyle(new Style(foreground: Color.Blue))
+                            .AddChoices(new[] { "Seguir viendo perfiles 🔎", "Volver al menú principal 🔙" }));
+                    
+                    if (opcionContinuarSinLikes.Contains("Seguir"))
+                    {
+                        // Volver a llamar a la función para seguir viendo perfiles
+                        await VerPerfiles();
+                    }
+                    
+                    return;
+                }
                 
                 // Mostrar mensaje de éxito
                 var successPanel = new Panel(leGusto 
@@ -872,6 +914,66 @@ namespace campusLove.application.services
             Console.ReadKey();
         }
 
+        private async Task SeleccionarEstrategiaEmparejamiento()
+        {
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Estrategias")
+                    .Centered()
+                    .Color(Color.Yellow));
+            
+            AnsiConsole.WriteLine();
+            
+            // Obtener las estrategias disponibles
+            var estrategias = _usuarioService.ObtenerEstrategiasDisponibles();
+            var estrategiaActual = _usuarioService.ObtenerEstrategiaActual();
+            
+            // Mostrar información sobre la estrategia actual
+            var panelActual = new Panel($"[bold]¡Encuentra tu match perfecto![/]\n\n[blue]Estrategia actual:[/] [green]{estrategiaActual.Nombre}[/]\n[yellow]{estrategiaActual.Descripcion}[/]");
+            panelActual.Border = BoxBorder.Rounded;
+            panelActual.Padding = new Padding(2, 1, 2, 1);
+            panelActual.BorderColor(Color.Yellow);
+            AnsiConsole.Write(panelActual);
+            
+            AnsiConsole.WriteLine();
+            
+            // Crear una lista de opciones con las estrategias disponibles
+            var opcionesEstrategias = estrategias.Select(e => $"{e.Nombre}: {e.Descripcion}").ToList();
+            opcionesEstrategias.Add("Volver al menú principal");
+            
+            // Crear una selección con Spectre.Console
+            var opcion = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]¿Qué estrategia de emparejamiento prefieres?[/]")
+                    .PageSize(5)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(opcionesEstrategias));
+            
+            // Si el usuario no elige volver al menú principal, cambiar la estrategia
+            if (!opcion.Contains("Volver"))
+            {
+                // Encontrar el índice de la estrategia seleccionada
+                int indiceSeleccionado = opcionesEstrategias.IndexOf(opcion);
+                
+                if (indiceSeleccionado >= 0 && indiceSeleccionado < estrategias.Count)
+                {
+                    // Cambiar la estrategia
+                    _usuarioService.CambiarEstrategiaPorIndice(indiceSeleccionado);
+                    
+                    // Mostrar mensaje de confirmación
+                    AnsiConsole.MarkupLine("\n[bold green]¡Estrategia actualizada con éxito![/]");
+                    AnsiConsole.MarkupLine($"[yellow]Ahora los perfiles se mostrarán según: {estrategias[indiceSeleccionado].Nombre}[/]");
+                    AnsiConsole.MarkupLine("\nPresione cualquier tecla para continuar.");
+                    Console.ReadKey();
+                }
+            }
+            
+            // Volver al menú principal
+            await MostrarMenuPrincipal();
+        }
+        
         public void ModoMulticliente()
         {
             Console.Clear();

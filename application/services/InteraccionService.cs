@@ -15,7 +15,72 @@ namespace campusLove.application.services
             _dbFactory = dbFactory;
         }
 
-        public async Task RegistrarInteraccion(int usuarioId, int objetivoId, bool leGusto)
+        public async Task<bool> RegistrarInteraccion(int usuarioId, int objetivoId, bool leGusto)
+        {
+            // Si es un dislike, no necesitamos verificar límites de likes
+            if (!leGusto)
+            {
+                await RegistrarInteraccionSinVerificar(usuarioId, objetivoId, leGusto);
+                return true;
+            }
+            
+            // Verificar límite de likes diarios
+            bool permiteInteraccion = await VerificarLikesDisponibles(usuarioId);
+            if (!permiteInteraccion)
+            {
+                return false; // No tiene likes disponibles
+            }
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                
+                // Iniciar una transacción para asegurar que ambas operaciones se realicen juntas
+                using (var transaction = conn.BeginTransaction())
+                {
+                    try
+                    {
+                        // Registrar la interacción
+                        var cmdInteraccion = new MySqlCommand(
+                            @"INSERT INTO interacciones (usuario_id, objetivo_usuario_id, le_gusto, fecha_interaccion) 
+                            VALUES (@usuarioId, @objetivoId, @leGusto, @fecha)", 
+                            (MySqlConnection)conn);
+                        
+                        cmdInteraccion.Parameters.AddWithValue("@usuarioId", usuarioId);
+                        cmdInteraccion.Parameters.AddWithValue("@objetivoId", objetivoId);
+                        cmdInteraccion.Parameters.AddWithValue("@leGusto", leGusto);
+                        cmdInteraccion.Parameters.AddWithValue("@fecha", DateTime.Now);
+                        cmdInteraccion.Transaction = (MySqlTransaction)transaction;
+                        
+                        await cmdInteraccion.ExecuteNonQueryAsync();
+                        
+                        // Incrementar el contador de likes diarios del usuario
+                        var cmdIncrementarLikes = new MySqlCommand(
+                            @"UPDATE usuarios 
+                            SET likes_diarios = likes_diarios + 1 
+                            WHERE id = @usuarioId", 
+                            (MySqlConnection)conn);
+                        
+                        cmdIncrementarLikes.Parameters.AddWithValue("@usuarioId", usuarioId);
+                        cmdIncrementarLikes.Transaction = (MySqlTransaction)transaction;
+                        
+                        await cmdIncrementarLikes.ExecuteNonQueryAsync();
+                        
+                        // Confirmar la transacción
+                        transaction.Commit();
+                        return true;
+                    }
+                    catch (Exception)
+                    {
+                        // Si hay un error, hacer rollback de la transacción
+                        transaction.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+        
+        private async Task RegistrarInteraccionSinVerificar(int usuarioId, int objetivoId, bool leGusto)
         {
             using (var conn = _dbFactory.CreateConnection())
             {
@@ -30,6 +95,66 @@ namespace campusLove.application.services
                 cmd.Parameters.AddWithValue("@leGusto", leGusto);
                 cmd.Parameters.AddWithValue("@fecha", DateTime.Now);
                 
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+        
+        public async Task<bool> VerificarLikesDisponibles(int usuarioId)
+        {
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT likes_diarios, max_likes_diarios FROM usuarios WHERE id = @usuarioId", 
+                    (MySqlConnection)conn);
+                
+                cmd.Parameters.AddWithValue("@usuarioId", usuarioId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        int likesActuales = Convert.ToInt32(reader["likes_diarios"]);
+                        int maxLikesDiarios = Convert.ToInt32(reader["max_likes_diarios"]);
+                        
+                        return likesActuales < maxLikesDiarios;
+                    }
+                    return false; // Si no encuentra el usuario
+                }
+            }
+        }
+        
+        public async Task<(int Actuales, int Maximos)> ObtenerLikesInfo(int usuarioId)
+        {
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT likes_diarios, max_likes_diarios FROM usuarios WHERE id = @usuarioId", 
+                    (MySqlConnection)conn);
+                
+                cmd.Parameters.AddWithValue("@usuarioId", usuarioId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        int likesActuales = Convert.ToInt32(reader["likes_diarios"]);
+                        int maxLikesDiarios = Convert.ToInt32(reader["max_likes_diarios"]);
+                        
+                        return (likesActuales, maxLikesDiarios);
+                    }
+                    return (0, 0); // Si no encuentra el usuario
+                }
+            }
+        }
+        
+        public async Task ResetearLikesDiarios()
+        {
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand("UPDATE usuarios SET likes_diarios = 0", (MySqlConnection)conn);
                 await cmd.ExecuteNonQueryAsync();
             }
         }
