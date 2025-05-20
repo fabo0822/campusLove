@@ -12,5 +12,6 @@ namespace campusLove.domain.entities
         public Usuario Usuario { get; set; }
         public string Correo { get; set; }
         public string Contrasena { get; set; }
+        public bool EsAdmin { get; set; } = false;
     }
 }

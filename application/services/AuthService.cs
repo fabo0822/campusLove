@@ -15,13 +15,13 @@ namespace campusLove.application.services
             _dbFactory = dbFactory;
         }
 
-        public async Task<(bool success, int userId)> Login(string correo, string contrasena)
+        public async Task<(bool success, int userId, bool isAdmin)> Login(string correo, string contrasena)
         {
             using (var conn = _dbFactory.CreateConnection())
             {
                 conn.Open();
                 var cmd = new MySqlCommand(
-                    @"SELECT l.usuario_id 
+                    @"SELECT l.usuario_id, l.es_admin 
                     FROM login l 
                     WHERE l.correo = @correo 
                     AND l.contrasena = @contrasena", 
@@ -30,12 +30,16 @@ namespace campusLove.application.services
                 cmd.Parameters.AddWithValue("@correo", correo);
                 cmd.Parameters.AddWithValue("@contrasena", contrasena);
 
-                var result = await cmd.ExecuteScalarAsync();
-                if (result != null && result != DBNull.Value)
+                using (var reader = await cmd.ExecuteReaderAsync())
                 {
-                    return (true, Convert.ToInt32(result));
+                    if (await reader.ReadAsync())
+                    {
+                        int userId = reader.GetInt32(0);
+                        bool isAdmin = reader.GetBoolean(1);
+                        return (true, userId, isAdmin);
+                    }
                 }
-                return (false, -1);
+                return (false, -1, false);
             }
         }
 

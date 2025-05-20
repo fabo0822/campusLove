@@ -65,27 +65,27 @@ INSERT INTO usuarios (id, nombre, edad, genero, intereses, carrera, frase, likes
 (20, 'Roberto', 27, 1, 'Economía, Política', 'Economía', 'Invirtiendo en un futuro juntos 💵📈', 6, 12, 17);
 
 -- Inserts de login
-INSERT INTO login (id, usuario_id, correo, contrasena) VALUES
-(1, 1, 'maria@email.com', 'maria123'),
-(2, 2, 'juan@email.com', 'juan123'),
-(3, 3, 'laura@email.com', 'laura123'),
-(4, 4, 'carlos@email.com', 'carlos123'),
-(5, 5, 'andrea@email.com', 'andrea123'),
-(6, 6, 'luis@email.com', 'luis123'),
-(7, 7, 'valentina@email.com', 'valentina123'),
-(8, 8, 'daniel@email.com', 'daniel123'),
-(9, 9, 'natalia@email.com', 'natalia123'),
-(10, 10, 'javier@email.com', 'javier123'),
-(11, 11, 'camila@email.com', 'camila123'),
-(12, 12, 'sebastian@email.com', 'sebastian123'),
-(13, 13, 'carolina@email.com', 'carolina123'),
-(14, 14, 'miguel@email.com', 'miguel123'),
-(15, 15, 'isabella@email.com', 'isabella123'),
-(16, 16, 'eduardo@email.com', 'eduardo123'),
-(17, 17, 'gabriela@email.com', 'gabriela123'),
-(18, 18, 'alejandro@email.com', 'alejandro123'),
-(19, 19, 'daniela@email.com', 'daniela123'),
-(20, 20, 'roberto@email.com', 'roberto123');
+INSERT INTO login (id, usuario_id, correo, contrasena, es_admin) VALUES
+(1, 1, 'maria@email.com', 'maria123', TRUE),  -- María como administradora
+(2, 2, 'juan@email.com', 'juan123', FALSE),
+(3, 3, 'laura@email.com', 'laura123', FALSE),
+(4, 4, 'carlos@email.com', 'carlos123', FALSE),
+(5, 5, 'andrea@email.com', 'andrea123', FALSE),
+(6, 6, 'luis@email.com', 'luis123', FALSE),
+(7, 7, 'valentina@email.com', 'valentina123', FALSE),
+(8, 8, 'daniel@email.com', 'daniel123', FALSE),
+(9, 9, 'natalia@email.com', 'natalia123', FALSE),
+(10, 10, 'javier@email.com', 'javier123', FALSE),
+(11, 11, 'camila@email.com', 'camila123', FALSE),
+(12, 12, 'sebastian@email.com', 'sebastian123', FALSE),
+(13, 13, 'carolina@email.com', 'carolina123', FALSE),
+(14, 14, 'miguel@email.com', 'miguel123', FALSE),
+(15, 15, 'isabella@email.com', 'isabella123', FALSE),
+(16, 16, 'eduardo@email.com', 'eduardo123', FALSE),
+(17, 17, 'gabriela@email.com', 'gabriela123', FALSE),
+(18, 18, 'alejandro@email.com', 'alejandro123', FALSE),
+(19, 19, 'daniela@email.com', 'daniela123', FALSE),
+(20, 20, 'roberto@email.com', 'roberto123', FALSE);
 
 -- Inserts de interacciones
 INSERT INTO interacciones (id, usuario_id, objetivo_usuario_id, le_gusto, fecha_interaccion) VALUES

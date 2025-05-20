@@ -60,6 +60,11 @@ namespace campusLove
         /// Servicio de validación de datos
         /// </summary>
         private static readonly ValidacionService _validacionService;
+        
+        /// <summary>
+        /// Servicio de administración del sistema
+        /// </summary>
+        private static readonly AdminService _adminService;
 
         /// <summary>
         /// Constructor estático que inicializa todos los servicios necesarios para la aplicación
@@ -83,6 +88,7 @@ namespace campusLove
                 _interaccionService = new InteraccionService(_dbFactory);
                 _estadisticaService = new EstadisticaService(_dbFactory);
                 _authService = new AuthService(_dbFactory);
+                _adminService = new AdminService(_dbFactory);
                 
                 // El UIService depende de todos los demás servicios
                 _uiService = new UIService(
@@ -90,7 +96,8 @@ namespace campusLove
                     _usuarioService, 
                     _interaccionService, 
                     (EstadisticaService)_estadisticaService, 
-                    _authService);
+                    _authService,
+                    _adminService);
 
                 Console.WriteLine("Servicios inicializados correctamente.");
             }

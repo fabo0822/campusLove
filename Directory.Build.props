@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Desactivar temporalmente las advertencias de nulabilidad para pruebas -->
+    <Nullable>disable</Nullable>
+    <!-- Tratar las advertencias como información en lugar de errores -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>CS8600;CS8601;CS8602;CS8603;CS8604;CS8610;CS8614;CS8618;CS8619;CS8620;CS8622;CS8625</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>
