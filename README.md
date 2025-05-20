@@ -109,6 +109,20 @@ El sistema cuenta con un "Modo multicliente" que permite cambiar rápidamente en
 - **Visualización de coincidencias** (matches cuando hay likes mutuos)
 - **Estadísticas** de popularidad y actividad
 - **Selección dinámica de estrategias** de emparejamiento
+- **Panel de administración** con funciones de gestión del sistema
+
+### Panel de Administración 👨‍💼
+
+El sistema cuenta con un panel de administración que permite gestionar diversos aspectos de la aplicación. Para acceder:
+
+1. Inicia sesión con una cuenta de administrador (por defecto: `maria@email.com` / `maria123`)
+2. El sistema detectará automáticamente los permisos de administrador y mostrará opciones adicionales
+
+Funcionalidades del panel de administración:
+- Gestión de usuarios
+- Administración de catálogos (géneros, países, departamentos, ciudades)
+- Visualización de estadísticas del sistema
+- Monitoreo de interacciones y coincidencias
 
 
 
