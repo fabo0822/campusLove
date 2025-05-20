@@ -1001,7 +1001,166 @@ namespace campusLove.application.services
         /// </summary>
         public async Task AñadirInteraccion()
         {
-            await MostrarMensajeEnConstruccion("Añadir Interacción");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Añadir Interacción")
+                    .Centered()
+                    .Color(Color.Green));
+            
+            AnsiConsole.WriteLine();
+            
+            // Obtener lista de usuarios emisores
+            AnsiConsole.MarkupLine("[bold]Seleccione el usuario emisor:[/]");
+            var usuariosEmisores = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre FROM usuarios ORDER BY nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        usuariosEmisores.Add(
+                            $"{reader["nombre"]} (ID: {reader["id"]})",
+                            Convert.ToInt32(reader["id"])
+                        );
+                    }
+                }
+            }
+            
+            if (usuariosEmisores.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay usuarios registrados para crear interacciones.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar usuario emisor
+            var usuarioEmisorSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Usuario que envía la interacción:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(usuariosEmisores.Keys));
+            
+            int usuarioEmisorId = usuariosEmisores[usuarioEmisorSeleccionado];
+            
+            // Obtener lista de usuarios receptores (excluyendo al emisor)
+            AnsiConsole.MarkupLine("\n[bold]Seleccione el usuario receptor:[/]");
+            var usuariosReceptores = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre FROM usuarios WHERE id != @emisorId ORDER BY nombre", 
+                    (MySqlConnection)conn);
+                cmd.Parameters.AddWithValue("@emisorId", usuarioEmisorId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        usuariosReceptores.Add(
+                            $"{reader["nombre"]} (ID: {reader["id"]})",
+                            Convert.ToInt32(reader["id"])
+                        );
+                    }
+                }
+            }
+            
+            if (usuariosReceptores.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay otros usuarios disponibles para recibir la interacción.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar usuario receptor
+            var usuarioReceptorSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Usuario que recibe la interacción:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(usuariosReceptores.Keys));
+            
+            int usuarioReceptorId = usuariosReceptores[usuarioReceptorSeleccionado];
+            
+            // Seleccionar tipo de interacción (like/dislike)
+            var tipoInteraccion = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Tipo de interacción:[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(new[] { "Like", "Dislike" }));
+            
+            bool esLike = tipoInteraccion == "Like";
+            
+            // Confirmar creación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[bold]¿Confirmar la creación de esta interacción?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(new[] { "Cancelar", "Confirmar" }));
+            
+            if (confirmar == "Confirmar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Creando interacción...", async ctx => 
+                    {
+                        resultado = await _adminService.AñadirInteraccion(usuarioEmisorId, usuarioReceptorId, esLike);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Interacción creada exitosamente.[/]");
+                    
+                    // Verificar si esta interacción generó un match
+                    bool esMatch = false;
+                    using (var conn = _dbFactory.CreateConnection())
+                    {
+                        conn.Open();
+                        var cmd = new MySqlCommand(
+                            @"SELECT COUNT(*) FROM interacciones 
+                            WHERE usuario_id = @receptorId 
+                            AND objetivo_usuario_id = @emisorId 
+                            AND le_gusto = 1", 
+                            (MySqlConnection)conn);
+                        cmd.Parameters.AddWithValue("@emisorId", usuarioEmisorId);
+                        cmd.Parameters.AddWithValue("@receptorId", usuarioReceptorId);
+                        
+                        int count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                        esMatch = esLike && count > 0;
+                    }
+                    
+                    if (esMatch)
+                    {
+                        AnsiConsole.MarkupLine("\n[yellow]¡Esta interacción ha generado un [bold]MATCH[/] entre los usuarios![/]");
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al crear la interacción.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         /// <summary>
@@ -1009,7 +1168,125 @@ namespace campusLove.application.services
         /// </summary>
         public async Task EliminarInteraccion()
         {
-            await MostrarMensajeEnConstruccion("Eliminar Interacción");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Eliminar Interacción")
+                    .Centered()
+                    .Color(Color.Red));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de interacciones recientes
+            AnsiConsole.MarkupLine("[bold]Interacciones recientes:[/]");
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Usuario Emisor[/]"));
+            table.AddColumn(new TableColumn("[b]Usuario Receptor[/]"));
+            table.AddColumn(new TableColumn("[b]Tipo[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Fecha[/]").Centered());
+            
+            // Obtener datos de interacciones
+            var interacciones = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT i.id, 
+                    ue.nombre as emisor, 
+                    ur.nombre as receptor, 
+                    CASE WHEN i.le_gusto = 1 THEN 'Like' ELSE 'Dislike' END as tipo,
+                    i.fecha_interaccion as fecha
+                    FROM interacciones i 
+                    JOIN usuarios ue ON i.usuario_id = ue.id 
+                    JOIN usuarios ur ON i.objetivo_usuario_id = ur.id 
+                    ORDER BY i.fecha_interaccion DESC LIMIT 15", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string emisor = reader["emisor"].ToString();
+                        string receptor = reader["receptor"].ToString();
+                        string tipo = reader["tipo"].ToString();
+                        DateTime fecha = Convert.ToDateTime(reader["fecha"]);
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            emisor,
+                            receptor,
+                            tipo == "Like" ? "[green]Like[/]" : "[red]Dislike[/]",
+                            fecha.ToString("yyyy-MM-dd HH:mm")
+                        );
+                        
+                        interacciones.Add($"ID: {id} - {emisor} → {receptor} ({tipo})", id);
+                    }
+                }
+            }
+            
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            
+            if (interacciones.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]No hay interacciones registradas.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar interacción a eliminar
+            var interaccionSeleccionada = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione la interacción que desea eliminar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(interacciones.Keys));
+            
+            int interaccionId = interacciones[interaccionSeleccionada];
+            
+            // Confirmar eliminación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold red]¿Está seguro de que desea eliminar esta interacción?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(new[] { "Cancelar", "Eliminar" }));
+            
+            if (confirmar == "Eliminar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                
+                await AnsiConsole.Status()
+                    .StartAsync("Eliminando interacción...", async ctx => 
+                    {
+                        resultado = await _adminService.EliminarInteraccion(interaccionId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Interacción eliminada exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al eliminar la interacción.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         /// <summary>
@@ -1017,7 +1294,303 @@ namespace campusLove.application.services
         /// </summary>
         public async Task VerMasInteracciones()
         {
-            await MostrarMensajeEnConstruccion("Ver Más Interacciones");
+            Console.Clear();
+            bool salir = false;
+            int paginaActual = 0;
+            const int elementosPorPagina = 20;
+            
+            while (!salir)
+            {
+                Console.Clear();
+                
+                // Crear título con Spectre.Console
+                AnsiConsole.Write(
+                    new FigletText("Interacciones")
+                        .Centered()
+                        .Color(Color.Blue));
+                
+                AnsiConsole.WriteLine();
+                
+                // Mostrar tabla de interacciones con paginación
+                AnsiConsole.MarkupLine($"[bold]Interacciones (Página {paginaActual + 1})[/]");
+                var table = new Table();
+                table.Border = TableBorder.Rounded;
+                
+                // Añadir columnas
+                table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+                table.AddColumn(new TableColumn("[b]Usuario Emisor[/]"));
+                table.AddColumn(new TableColumn("[b]Usuario Receptor[/]"));
+                table.AddColumn(new TableColumn("[b]Tipo[/]").Centered());
+                table.AddColumn(new TableColumn("[b]Fecha[/]").Centered());
+                
+                // Obtener datos de interacciones para la página actual
+                int totalInteracciones = 0;
+                
+                using (var conn = _dbFactory.CreateConnection())
+                {
+                    conn.Open();
+                    
+                    // Primero contar el total de interacciones para calcular el número total de páginas
+                    var cmdCount = new MySqlCommand(
+                        "SELECT COUNT(*) FROM interacciones", 
+                        (MySqlConnection)conn);
+                    
+                    totalInteracciones = Convert.ToInt32(await cmdCount.ExecuteScalarAsync());
+                    
+                    // Obtener las interacciones para la página actual
+                    var cmd = new MySqlCommand(
+                        @"SELECT i.id, 
+                        ue.nombre as emisor, 
+                        ur.nombre as receptor, 
+                        CASE WHEN i.le_gusto = 1 THEN 'Like' ELSE 'Dislike' END as tipo,
+                        i.fecha_interaccion as fecha
+                        FROM interacciones i 
+                        JOIN usuarios ue ON i.usuario_id = ue.id 
+                        JOIN usuarios ur ON i.objetivo_usuario_id = ur.id 
+                        ORDER BY i.fecha_interaccion DESC
+                        LIMIT @limit OFFSET @offset", 
+                        (MySqlConnection)conn);
+                    
+                    cmd.Parameters.AddWithValue("@limit", elementosPorPagina);
+                    cmd.Parameters.AddWithValue("@offset", paginaActual * elementosPorPagina);
+                    
+                    using (var reader = await cmd.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            int id = Convert.ToInt32(reader["id"]);
+                            string emisor = reader["emisor"].ToString();
+                            string receptor = reader["receptor"].ToString();
+                            string tipo = reader["tipo"].ToString();
+                            DateTime fecha = Convert.ToDateTime(reader["fecha"]);
+                            
+                            table.AddRow(
+                                id.ToString(),
+                                emisor,
+                                receptor,
+                                tipo == "Like" ? "[green]Like[/]" : "[red]Dislike[/]",
+                                fecha.ToString("yyyy-MM-dd HH:mm")
+                            );
+                        }
+                    }
+                }
+                
+                AnsiConsole.Write(table);
+                
+                // Calcular número total de páginas
+                int totalPaginas = (int)Math.Ceiling((double)totalInteracciones / elementosPorPagina);
+                
+                // Mostrar información de paginación
+                AnsiConsole.MarkupLine($"Mostrando {paginaActual * elementosPorPagina + 1}-{Math.Min((paginaActual + 1) * elementosPorPagina, totalInteracciones)} de {totalInteracciones} interacciones. Página {paginaActual + 1} de {totalPaginas}");
+                
+                // Mostrar opciones de navegación
+                var opciones = new List<string>();
+                
+                if (paginaActual > 0)
+                {
+                    opciones.Add("Página anterior");
+                }
+                
+                if ((paginaActual + 1) * elementosPorPagina < totalInteracciones)
+                {
+                    opciones.Add("Página siguiente");
+                }
+                
+                opciones.Add("Filtrar por usuario");
+                opciones.Add("Volver al menú anterior");
+                
+                // Seleccionar opción
+                var opcion = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("\n[bold]¿Qué desea hacer?[/]")
+                        .PageSize(opciones.Count)
+                        .HighlightStyle(new Style(foreground: Color.Blue))
+                        .AddChoices(opciones));
+                
+                switch (opcion)
+                {
+                    case "Página anterior":
+                        paginaActual--;
+                        break;
+                    
+                    case "Página siguiente":
+                        paginaActual++;
+                        break;
+                    
+                    case "Filtrar por usuario":
+                        await FiltrarInteraccionesPorUsuario();
+                        break;
+                    
+                    case "Volver al menú anterior":
+                        salir = true;
+                        break;
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Filtrar interacciones por usuario
+        /// </summary>
+        private async Task FiltrarInteraccionesPorUsuario()
+        {
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Filtrar Interacciones")
+                    .Centered()
+                    .Color(Color.Blue));
+            
+            AnsiConsole.WriteLine();
+            
+            // Obtener lista de usuarios
+            var usuarios = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre FROM usuarios ORDER BY nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        usuarios.Add(
+                            $"{reader["nombre"]} (ID: {reader["id"]})",
+                            Convert.ToInt32(reader["id"])
+                        );
+                    }
+                }
+            }
+            
+            if (usuarios.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay usuarios registrados.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Añadir opción para mostrar todos los usuarios
+            usuarios.Add("<Todos los usuarios>", -1);
+            
+            // Seleccionar usuario
+            var usuarioSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione un usuario para filtrar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Blue))
+                    .AddChoices(usuarios.Keys));
+            
+            int usuarioId = usuarios[usuarioSeleccionado];
+            
+            // Si se seleccionó "Todos los usuarios", regresar al listado completo
+            if (usuarioId == -1)
+            {
+                return;
+            }
+            
+            // Seleccionar tipo de filtro
+            var tipoFiltro = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Tipo de filtro:[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Blue))
+                    .AddChoices(new[] { "Interacciones enviadas", "Interacciones recibidas", "Ambas direcciones" }));
+            
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            string nombreUsuario = usuarioSeleccionado.Split('(')[0].Trim();
+            AnsiConsole.Write(
+                new FigletText("Interacciones")
+                    .Centered()
+                    .Color(Color.Blue));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de interacciones filtradas
+            string subtitulo = tipoFiltro switch {
+                "Interacciones enviadas" => $"[bold]Interacciones enviadas por {nombreUsuario}[/]",
+                "Interacciones recibidas" => $"[bold]Interacciones recibidas por {nombreUsuario}[/]",
+                _ => $"[bold]Todas las interacciones de {nombreUsuario}[/]"
+            };
+            
+            AnsiConsole.MarkupLine(subtitulo);
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Usuario Emisor[/]"));
+            table.AddColumn(new TableColumn("[b]Usuario Receptor[/]"));
+            table.AddColumn(new TableColumn("[b]Tipo[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Fecha[/]").Centered());
+            
+            // Construir la condición SQL según el tipo de filtro
+            string condicion = tipoFiltro switch {
+                "Interacciones enviadas" => "i.usuario_id = @usuarioId",
+                "Interacciones recibidas" => "i.objetivo_usuario_id = @usuarioId",
+                _ => "(i.usuario_id = @usuarioId OR i.objetivo_usuario_id = @usuarioId)"
+            };
+            
+            // Obtener datos de interacciones filtradas
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    $@"SELECT i.id, 
+                    ue.nombre as emisor, 
+                    ur.nombre as receptor, 
+                    CASE WHEN i.le_gusto = 1 THEN 'Like' ELSE 'Dislike' END as tipo,
+                    i.fecha_interaccion as fecha
+                    FROM interacciones i 
+                    JOIN usuarios ue ON i.usuario_id = ue.id 
+                    JOIN usuarios ur ON i.objetivo_usuario_id = ur.id 
+                    WHERE {condicion}
+                    ORDER BY i.fecha_interaccion DESC
+                    LIMIT 50", 
+                    (MySqlConnection)conn);
+                
+                cmd.Parameters.AddWithValue("@usuarioId", usuarioId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    bool hayInteracciones = false;
+                    
+                    while (await reader.ReadAsync())
+                    {
+                        hayInteracciones = true;
+                        int id = Convert.ToInt32(reader["id"]);
+                        string emisor = reader["emisor"].ToString();
+                        string receptor = reader["receptor"].ToString();
+                        string tipo = reader["tipo"].ToString();
+                        DateTime fecha = Convert.ToDateTime(reader["fecha"]);
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            emisor,
+                            receptor,
+                            tipo == "Like" ? "[green]Like[/]" : "[red]Dislike[/]",
+                            fecha.ToString("yyyy-MM-dd HH:mm")
+                        );
+                    }
+                    
+                    if (!hayInteracciones)
+                    {
+                        AnsiConsole.MarkupLine("[yellow]No se encontraron interacciones con los filtros seleccionados.[/]");
+                    }
+                    else
+                    {
+                        AnsiConsole.Write(table);
+                    }
+                }
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         #endregion
@@ -1025,11 +1598,587 @@ namespace campusLove.application.services
         #region Métodos CRUD para Coincidencias
         
         /// <summary>
+        /// Interfaz de usuario para ver más coincidencias
+        /// </summary>
+        public async Task VerCoincidencias()
+        {
+            Console.Clear();
+            bool salir = false;
+            int paginaActual = 0;
+            const int elementosPorPagina = 20;
+            
+            while (!salir)
+            {
+                Console.Clear();
+                
+                // Crear título con Spectre.Console
+                AnsiConsole.Write(
+                    new FigletText("Coincidencias")
+                        .Centered()
+                        .Color(Color.Fuchsia));
+                
+                AnsiConsole.WriteLine();
+                
+                // Mostrar tabla de coincidencias existentes con paginación
+                AnsiConsole.MarkupLine($"[bold]Coincidencias (Página {paginaActual + 1})[/]");
+                var table = new Table();
+                table.Border = TableBorder.Rounded;
+                
+                // Añadir columnas
+                table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+                table.AddColumn(new TableColumn("[b]Usuario 1[/]"));
+                table.AddColumn(new TableColumn("[b]Usuario 2[/]"));
+                table.AddColumn(new TableColumn("[b]Fecha Coincidencia[/]").Centered());
+                
+                // Obtener el total de coincidencias y las de la página actual
+                int totalCoincidencias = 0;
+                
+                using (var conn = _dbFactory.CreateConnection())
+                {
+                    conn.Open();
+                    
+                    // Primero contar el total de coincidencias
+                    var cmdCount = new MySqlCommand(
+                        "SELECT COUNT(*) FROM coincidencias", 
+                        (MySqlConnection)conn);
+                    
+                    totalCoincidencias = Convert.ToInt32(await cmdCount.ExecuteScalarAsync());
+                    
+                    // Obtener las coincidencias para la página actual
+                    var cmd = new MySqlCommand(
+                        @"SELECT c.id, 
+                        u1.nombre as usuario1, 
+                        u2.nombre as usuario2, 
+                        c.fecha_coincidencia as fecha
+                        FROM coincidencias c 
+                        JOIN usuarios u1 ON c.usuario1_id = u1.id 
+                        JOIN usuarios u2 ON c.usuario2_id = u2.id 
+                        ORDER BY c.fecha_coincidencia DESC
+                        LIMIT @limit OFFSET @offset", 
+                        (MySqlConnection)conn);
+                    
+                    cmd.Parameters.AddWithValue("@limit", elementosPorPagina);
+                    cmd.Parameters.AddWithValue("@offset", paginaActual * elementosPorPagina);
+                    
+                    using (var reader = await cmd.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            int id = Convert.ToInt32(reader["id"]);
+                            string usuario1 = reader["usuario1"].ToString();
+                            string usuario2 = reader["usuario2"].ToString();
+                            DateTime fecha = Convert.ToDateTime(reader["fecha"]);
+                            
+                            table.AddRow(
+                                id.ToString(),
+                                usuario1,
+                                usuario2,
+                                fecha.ToString("yyyy-MM-dd HH:mm")
+                            );
+                        }
+                    }
+                }
+                
+                if (totalCoincidencias == 0)
+                {
+                    AnsiConsole.MarkupLine("[yellow]No hay coincidencias registradas.[/]");
+                    AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                    Console.ReadKey();
+                    return;
+                }
+                
+                AnsiConsole.Write(table);
+                
+                // Calcular número total de páginas
+                int totalPaginas = (int)Math.Ceiling((double)totalCoincidencias / elementosPorPagina);
+                
+                // Mostrar información de paginación
+                AnsiConsole.MarkupLine($"Mostrando {paginaActual * elementosPorPagina + 1}-{Math.Min((paginaActual + 1) * elementosPorPagina, totalCoincidencias)} de {totalCoincidencias} coincidencias. Página {paginaActual + 1} de {totalPaginas}");
+                
+                // Mostrar opciones de navegación
+                var opciones = new List<string>();
+                
+                if (paginaActual > 0)
+                {
+                    opciones.Add("Página anterior");
+                }
+                
+                if ((paginaActual + 1) * elementosPorPagina < totalCoincidencias)
+                {
+                    opciones.Add("Página siguiente");
+                }
+                
+                opciones.Add("Buscar por usuario");
+                opciones.Add("Ver detalles de una coincidencia");
+                opciones.Add("Volver al menú anterior");
+                
+                // Seleccionar opción
+                var opcion = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("\n[bold]¿Qué desea hacer?[/]")
+                        .PageSize(Math.Min(opciones.Count, 10))
+                        .HighlightStyle(new Style(foreground: Color.Fuchsia))
+                        .AddChoices(opciones));
+                
+                switch (opcion)
+                {
+                    case "Página anterior":
+                        paginaActual--;
+                        break;
+                    
+                    case "Página siguiente":
+                        paginaActual++;
+                        break;
+                    
+                    case "Buscar por usuario":
+                        await BuscarCoincidenciasPorUsuario();
+                        break;
+                    
+                    case "Ver detalles de una coincidencia":
+                        await VerDetallesCoincidencia();
+                        break;
+                    
+                    case "Volver al menú anterior":
+                        salir = true;
+                        break;
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Buscar coincidencias por usuario
+        /// </summary>
+        private async Task BuscarCoincidenciasPorUsuario()
+        {
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Buscar Coincidencias")
+                    .Centered()
+                    .Color(Color.Fuchsia));
+            
+            AnsiConsole.WriteLine();
+            
+            // Obtener lista de usuarios
+            var usuarios = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre FROM usuarios ORDER BY nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        usuarios.Add(
+                            $"{reader["nombre"]} (ID: {reader["id"]})",
+                            Convert.ToInt32(reader["id"])
+                        );
+                    }
+                }
+            }
+            
+            if (usuarios.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay usuarios registrados.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar usuario
+            var usuarioSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione un usuario para ver sus coincidencias:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Fuchsia))
+                    .AddChoices(usuarios.Keys));
+            
+            int usuarioId = usuarios[usuarioSeleccionado];
+            string nombreUsuario = usuarioSeleccionado.Split('(')[0].Trim();
+            
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Coincidencias")
+                    .Centered()
+                    .Color(Color.Fuchsia));
+            
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine($"[bold]Coincidencias de {nombreUsuario}[/]");
+            
+            // Tabla para mostrar resultados
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Usuario[/]"));
+            table.AddColumn(new TableColumn("[b]Match con[/]"));
+            table.AddColumn(new TableColumn("[b]Fecha[/]").Centered());
+            
+            // Obtener coincidencias del usuario
+            int totalCoincidencias = 0;
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT c.id, 
+                    u1.nombre as usuario1, u1.id as usuario1_id,
+                    u2.nombre as usuario2, u2.id as usuario2_id,
+                    c.fecha_coincidencia as fecha
+                    FROM coincidencias c 
+                    JOIN usuarios u1 ON c.usuario1_id = u1.id 
+                    JOIN usuarios u2 ON c.usuario2_id = u2.id 
+                    WHERE c.usuario1_id = @usuarioId OR c.usuario2_id = @usuarioId
+                    ORDER BY c.fecha_coincidencia DESC", 
+                    (MySqlConnection)conn);
+                
+                cmd.Parameters.AddWithValue("@usuarioId", usuarioId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        totalCoincidencias++;
+                        int id = Convert.ToInt32(reader["id"]);
+                        int usuario1Id = Convert.ToInt32(reader["usuario1_id"]);
+                        int usuario2Id = Convert.ToInt32(reader["usuario2_id"]);
+                        string usuario1 = reader["usuario1"].ToString();
+                        string usuario2 = reader["usuario2"].ToString();
+                        DateTime fecha = Convert.ToDateTime(reader["fecha"]);
+                        
+                        // Determinar cuál es el usuario actual y cuál es la pareja
+                        string usuarioActual = usuario1Id == usuarioId ? usuario1 : usuario2;
+                        string pareja = usuario1Id == usuarioId ? usuario2 : usuario1;
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            usuarioActual,
+                            pareja,
+                            fecha.ToString("yyyy-MM-dd HH:mm")
+                        );
+                    }
+                }
+            }
+            
+            if (totalCoincidencias == 0)
+            {
+                AnsiConsole.MarkupLine($"[yellow]El usuario {nombreUsuario} no tiene coincidencias registradas.[/]");
+            }
+            else
+            {
+                AnsiConsole.Write(table);
+                AnsiConsole.MarkupLine($"\nSe encontraron {totalCoincidencias} coincidencias para {nombreUsuario}.");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
+        }
+        
+        /// <summary>
+        /// Ver detalles de una coincidencia específica
+        /// </summary>
+        private async Task VerDetallesCoincidencia()
+        {
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Detalles Coincidencia")
+                    .Centered()
+                    .Color(Color.Fuchsia));
+            
+            AnsiConsole.WriteLine();
+            
+            // Solicitar ID de la coincidencia
+            int coincidenciaId;
+            while (true)
+            {
+                try
+                {
+                    coincidenciaId = AnsiConsole.Ask<int>("[fuchsia]Ingrese el ID de la coincidencia:[/] ");
+                    break;
+                }
+                catch
+                {
+                    AnsiConsole.MarkupLine("[red]Por favor, ingrese un número válido.[/]");
+                }
+            }
+            
+            // Obtener detalles de la coincidencia
+            bool coincidenciaEncontrada = false;
+            int matchUsuario1Id = 0;
+            int matchUsuario2Id = 0;
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT c.id, c.usuario1_id, c.usuario2_id, c.fecha_coincidencia,
+                    u1.nombre as usuario1_nombre, u1.edad as usuario1_edad, 
+                    u2.nombre as usuario2_nombre, u2.edad as usuario2_edad,
+                    g1.descripcion as usuario1_genero, g2.descripcion as usuario2_genero,
+                    ci1.nombre as usuario1_ciudad, ci2.nombre as usuario2_ciudad
+                    FROM coincidencias c
+                    JOIN usuarios u1 ON c.usuario1_id = u1.id
+                    JOIN usuarios u2 ON c.usuario2_id = u2.id
+                    JOIN generos g1 ON u1.genero = g1.id
+                    JOIN generos g2 ON u2.genero = g2.id
+                    JOIN ciudades ci1 ON u1.ciudad_id = ci1.id
+                    JOIN ciudades ci2 ON u2.ciudad_id = ci2.id
+                    WHERE c.id = @coincidenciaId", 
+                    (MySqlConnection)conn);
+                
+                cmd.Parameters.AddWithValue("@coincidenciaId", coincidenciaId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        coincidenciaEncontrada = true;
+                        
+                        // Crear panel con detalles de la coincidencia
+                        // Obtener datos
+                        DateTime fechaCoincidencia = Convert.ToDateTime(reader["fecha_coincidencia"]);
+                        
+                        // Usuario 1
+                        int usuario1Id = Convert.ToInt32(reader["usuario1_id"]);
+                        string usuario1Nombre = reader["usuario1_nombre"].ToString();
+                        int usuario1Edad = Convert.ToInt32(reader["usuario1_edad"]);
+                        string usuario1Genero = reader["usuario1_genero"].ToString();
+                        string usuario1Ciudad = reader["usuario1_ciudad"].ToString();
+                        
+                        // Usuario 2
+                        int usuario2Id = Convert.ToInt32(reader["usuario2_id"]);
+                        string usuario2Nombre = reader["usuario2_nombre"].ToString();
+                        int usuario2Edad = Convert.ToInt32(reader["usuario2_edad"]);
+                        string usuario2Genero = reader["usuario2_genero"].ToString();
+                        string usuario2Ciudad = reader["usuario2_ciudad"].ToString();
+                        
+                        // Guardar los IDs para consultar interacciones después
+                        matchUsuario1Id = usuario1Id;
+                        matchUsuario2Id = usuario2Id;
+                        
+                        // Construir mensaje de detalles en un panel
+                        var detallesTexto = $"[bold fuchsia]Fecha de coincidencia:[/] {fechaCoincidencia.ToString("yyyy-MM-dd HH:mm")}\n\n" +
+                            $"[bold fuchsia]Usuario 1:[/]\n" +
+                            $"  [bold]ID:[/] {usuario1Id}\n" +
+                            $"  [bold]Nombre:[/] {usuario1Nombre}\n" +
+                            $"  [bold]Edad:[/] {usuario1Edad} años\n" +
+                            $"  [bold]Género:[/] {usuario1Genero}\n" +
+                            $"  [bold]Ciudad:[/] {usuario1Ciudad}\n\n" +
+                            $"[bold fuchsia]Usuario 2:[/]\n" +
+                            $"  [bold]ID:[/] {usuario2Id}\n" +
+                            $"  [bold]Nombre:[/] {usuario2Nombre}\n" +
+                            $"  [bold]Edad:[/] {usuario2Edad} años\n" +
+                            $"  [bold]Género:[/] {usuario2Genero}\n" +
+                            $"  [bold]Ciudad:[/] {usuario2Ciudad}\n";
+                        
+                        var panel = new Panel(new Markup(detallesTexto));
+                        panel.Header = new PanelHeader($"[bold fuchsia]Detalles de la Coincidencia ID: {coincidenciaId}[/]");
+                        panel.Border = BoxBorder.Rounded;
+                        panel.Expand = true;
+                        
+                        AnsiConsole.Write(panel);
+                    }
+                }
+                
+                if (coincidenciaEncontrada)
+                {
+                    // Obtener interacciones que llevaron al match
+                    var interacciones = new Table();
+                    interacciones.Border = TableBorder.Rounded;
+                    interacciones.Title = new TableTitle("[bold fuchsia]Interacciones que llevaron al match[/]");
+                    
+                    // Añadir columnas
+                    interacciones.AddColumn(new TableColumn("[b]Usuario[/]"));
+                    interacciones.AddColumn(new TableColumn("[b]Acción[/]").Centered());
+                    interacciones.AddColumn(new TableColumn("[b]Hacia[/]"));
+                    interacciones.AddColumn(new TableColumn("[b]Fecha[/]").Centered());
+                    
+                    // Consultar interacciones
+                    var cmdInteracciones = new MySqlCommand(
+                        @"SELECT u1.nombre as emisor, u2.nombre as receptor, 
+                        i.le_gusto, i.fecha_interaccion
+                        FROM interacciones i
+                        JOIN usuarios u1 ON i.usuario_id = u1.id
+                        JOIN usuarios u2 ON i.objetivo_usuario_id = u2.id
+                        WHERE (i.usuario_id = @usuario1Id AND i.objetivo_usuario_id = @usuario2Id) OR
+                        (i.usuario_id = @usuario2Id AND i.objetivo_usuario_id = @usuario1Id)
+                        ORDER BY i.fecha_interaccion", 
+                        (MySqlConnection)conn);
+                    
+                    cmdInteracciones.Parameters.AddWithValue("@usuario1Id", matchUsuario1Id);
+                    cmdInteracciones.Parameters.AddWithValue("@usuario2Id", matchUsuario2Id);
+                    
+                    using (var readerInteracciones = await cmdInteracciones.ExecuteReaderAsync())
+                    {
+                        bool hayInteracciones = false;
+                        
+                        while (await readerInteracciones.ReadAsync())
+                        {
+                            hayInteracciones = true;
+                            
+                            string emisor = readerInteracciones["emisor"].ToString();
+                            string receptor = readerInteracciones["receptor"].ToString();
+                            bool leGusto = Convert.ToBoolean(readerInteracciones["le_gusto"]);
+                            DateTime fecha = Convert.ToDateTime(readerInteracciones["fecha_interaccion"]);
+                            
+                            interacciones.AddRow(
+                                emisor,
+                                leGusto ? "[green]Like[/]" : "[red]Dislike[/]",
+                                receptor,
+                                fecha.ToString("yyyy-MM-dd HH:mm")
+                            );
+                        }
+                        
+                        if (hayInteracciones)
+                        {
+                            AnsiConsole.WriteLine();
+                            AnsiConsole.Write(interacciones);
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("\n[yellow]No se encontraron interacciones que llevaran a este match.[/]");
+                        }
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine($"[red]No se encontró ninguna coincidencia con el ID {coincidenciaId}.[/]");
+                }
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
+        }
+        
+        /// <summary>
         /// Interfaz de usuario para eliminar una coincidencia
         /// </summary>
         public async Task EliminarCoincidencia()
         {
-            await MostrarMensajeEnConstruccion("Eliminar Coincidencia");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Eliminar Coincidencia")
+                    .Centered()
+                    .Color(Color.Red));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de coincidencias existentes
+            AnsiConsole.MarkupLine("[bold]Coincidencias existentes:[/]");
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Usuario 1[/]"));
+            table.AddColumn(new TableColumn("[b]Usuario 2[/]"));
+            table.AddColumn(new TableColumn("[b]Fecha Coincidencia[/]").Centered());
+            
+            // Obtener coincidencias existentes
+            var coincidencias = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT c.id, 
+                    u1.nombre as usuario1, 
+                    u2.nombre as usuario2, 
+                    c.fecha_coincidencia as fecha
+                    FROM coincidencias c 
+                    JOIN usuarios u1 ON c.usuario1_id = u1.id 
+                    JOIN usuarios u2 ON c.usuario2_id = u2.id 
+                    ORDER BY c.fecha_coincidencia DESC", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string usuario1 = reader["usuario1"].ToString();
+                        string usuario2 = reader["usuario2"].ToString();
+                        DateTime fecha = Convert.ToDateTime(reader["fecha"]);
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            usuario1,
+                            usuario2,
+                            fecha.ToString("yyyy-MM-dd HH:mm")
+                        );
+                        
+                        coincidencias.Add($"ID: {id} - {usuario1} ❤ {usuario2} ({fecha.ToString("yyyy-MM-dd")})", id);
+                    }
+                }
+            }
+            
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            
+            if (coincidencias.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]No hay coincidencias registradas.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar coincidencia a eliminar
+            var coincidenciaSeleccionada = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione la coincidencia que desea eliminar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(coincidencias.Keys));
+            
+            int coincidenciaId = coincidencias[coincidenciaSeleccionada];
+            
+            // Confirmar eliminación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold red]¿Está seguro de que desea eliminar esta coincidencia?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(new[] { "Cancelar", "Eliminar" }));
+            
+            if (confirmar == "Eliminar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Eliminando coincidencia...", async ctx => 
+                    {
+                        resultado = await _adminService.EliminarCoincidencia(coincidenciaId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Coincidencia eliminada exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al eliminar la coincidencia.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         #endregion
@@ -1041,7 +2190,106 @@ namespace campusLove.application.services
         /// </summary>
         public async Task AñadirCiudad()
         {
-            await MostrarMensajeEnConstruccion("Añadir Ciudad");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Añadir Ciudad")
+                    .Centered()
+                    .Color(Color.Green));
+            
+            AnsiConsole.WriteLine();
+            
+            // Obtener lista de departamentos
+            var departamentos = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT d.id, d.nombre, p.nombre as pais 
+                    FROM departamentos d
+                    JOIN paises p ON d.pais_id = p.id
+                    ORDER BY p.nombre, d.nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string pais = reader["pais"].ToString();
+                        
+                        departamentos.Add($"{nombre} - {pais}", id);
+                    }
+                }
+            }
+            
+            if (departamentos.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay departamentos registrados. Debe agregar al menos un departamento antes de crear una ciudad.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Solicitar nombre de la ciudad
+            string nombreCiudad = AnsiConsole.Ask<string>("[green]Nombre de la ciudad:[/] ");
+            
+            // Validar nombre
+            if (string.IsNullOrWhiteSpace(nombreCiudad))
+            {
+                AnsiConsole.MarkupLine("[red]El nombre de la ciudad no puede estar vacío.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar departamento
+            var departamentoSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione el departamento:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(departamentos.Keys));
+            
+            int departamentoId = departamentos[departamentoSeleccionado];
+            
+            // Confirmar creación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[bold]¿Confirmar la creación de la ciudad [green]{nombreCiudad}[/]?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(new[] { "Cancelar", "Confirmar" }));
+            
+            if (confirmar == "Confirmar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Creando ciudad...", async ctx => 
+                    {
+                        resultado = await _adminService.AñadirCiudad(nombreCiudad, departamentoId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Ciudad creada exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al crear la ciudad.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         /// <summary>
@@ -1049,7 +2297,219 @@ namespace campusLove.application.services
         /// </summary>
         public async Task EditarCiudad()
         {
-            await MostrarMensajeEnConstruccion("Editar Ciudad");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Editar Ciudad")
+                    .Centered()
+                    .Color(Color.Yellow));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de ciudades existentes
+            AnsiConsole.MarkupLine("[bold]Ciudades existentes:[/]");
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Ciudad[/]"));
+            table.AddColumn(new TableColumn("[b]Departamento[/]"));
+            table.AddColumn(new TableColumn("[b]País[/]"));
+            
+            // Obtener ciudades existentes
+            var ciudades = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT c.id, c.nombre, d.nombre as departamento, p.nombre as pais
+                    FROM ciudades c
+                    JOIN departamentos d ON c.departamento_id = d.id
+                    JOIN paises p ON d.pais_id = p.id
+                    ORDER BY p.nombre, d.nombre, c.nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string departamento = reader["departamento"].ToString();
+                        string pais = reader["pais"].ToString();
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            nombre,
+                            departamento,
+                            pais
+                        );
+                        
+                        ciudades.Add($"{nombre} (ID: {id})", id);
+                    }
+                }
+            }
+            
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            
+            if (ciudades.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay ciudades registradas para editar.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar ciudad a editar
+            var ciudadSeleccionada = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione la ciudad que desea editar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(ciudades.Keys));
+            
+            int ciudadId = ciudades[ciudadSeleccionada];
+            
+            // Obtener detalles actuales de la ciudad seleccionada
+            string nombreActual = "";
+            int departamentoIdActual = 0;
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT nombre, departamento_id FROM ciudades WHERE id = @ciudadId", 
+                    (MySqlConnection)conn);
+                cmd.Parameters.AddWithValue("@ciudadId", ciudadId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        nombreActual = reader["nombre"].ToString();
+                        departamentoIdActual = Convert.ToInt32(reader["departamento_id"]);
+                    }
+                }
+            }
+            
+            // Solicitar nuevo nombre (o mantener el actual)
+            var nuevoNombre = AnsiConsole.Prompt(
+                new TextPrompt<string>($"[yellow]Nuevo nombre ([grey]actual: {nombreActual}[/]):[/] ")
+                    .AllowEmpty()
+                    .DefaultValue(nombreActual));
+            
+            // Obtener lista de departamentos
+            var departamentos = new Dictionary<string, int>();
+            string departamentoActualNombre = "";
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                
+                // Primero obtener el nombre del departamento actual
+                var cmdDepartamentoActual = new MySqlCommand(
+                    @"SELECT d.nombre, p.nombre as pais
+                    FROM departamentos d
+                    JOIN paises p ON d.pais_id = p.id
+                    WHERE d.id = @departamentoId", 
+                    (MySqlConnection)conn);
+                cmdDepartamentoActual.Parameters.AddWithValue("@departamentoId", departamentoIdActual);
+                
+                using (var reader = await cmdDepartamentoActual.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        string nombre = reader["nombre"].ToString();
+                        string pais = reader["pais"].ToString();
+                        departamentoActualNombre = $"{nombre} - {pais}";
+                    }
+                }
+                
+                // Obtener lista completa de departamentos
+                var cmdDepartamentos = new MySqlCommand(
+                    @"SELECT d.id, d.nombre, p.nombre as pais
+                    FROM departamentos d
+                    JOIN paises p ON d.pais_id = p.id
+                    ORDER BY p.nombre, d.nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmdDepartamentos.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string pais = reader["pais"].ToString();
+                        
+                        departamentos.Add($"{nombre} - {pais}", id);
+                    }
+                }
+            }
+            
+            // Mostrar departamento actual y permitir cambiarlo
+            AnsiConsole.MarkupLine($"[yellow]Departamento actual: [grey]{departamentoActualNombre}[/][/]");
+            
+            // Preguntar si desea cambiar el departamento
+            var cambiarDepartamento = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]¿Desea cambiar el departamento?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(new[] { "No", "Sí" }));
+            
+            int nuevoDepartamentoId = departamentoIdActual;
+            
+            if (cambiarDepartamento == "Sí")
+            {
+                // Seleccionar nuevo departamento
+                var departamentoSeleccionado = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("[bold]Seleccione el nuevo departamento:[/]")
+                        .PageSize(10)
+                        .HighlightStyle(new Style(foreground: Color.Yellow))
+                        .AddChoices(departamentos.Keys));
+                
+                nuevoDepartamentoId = departamentos[departamentoSeleccionado];
+            }
+            
+            // Confirmar edición
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[bold]¿Confirmar los cambios?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(new[] { "Cancelar", "Confirmar" }));
+            
+            if (confirmar == "Confirmar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Actualizando ciudad...", async ctx => 
+                    {
+                        resultado = await _adminService.EditarCiudad(ciudadId, nuevoNombre, nuevoDepartamentoId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Ciudad actualizada exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al actualizar la ciudad.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         /// <summary>
@@ -1057,7 +2517,125 @@ namespace campusLove.application.services
         /// </summary>
         public async Task EliminarCiudad()
         {
-            await MostrarMensajeEnConstruccion("Eliminar Ciudad");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Eliminar Ciudad")
+                    .Centered()
+                    .Color(Color.Red));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de ciudades existentes
+            AnsiConsole.MarkupLine("[bold]Ciudades existentes:[/]");
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Ciudad[/]"));
+            table.AddColumn(new TableColumn("[b]Departamento[/]"));
+            table.AddColumn(new TableColumn("[b]País[/]"));
+            table.AddColumn(new TableColumn("[b]Usuarios[/]").Centered());
+            
+            // Obtener ciudades existentes
+            var ciudades = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT c.id, c.nombre, d.nombre as departamento, p.nombre as pais,
+                    (SELECT COUNT(*) FROM usuarios u WHERE u.ciudad_id = c.id) as usuarios
+                    FROM ciudades c
+                    JOIN departamentos d ON c.departamento_id = d.id
+                    JOIN paises p ON d.pais_id = p.id
+                    ORDER BY p.nombre, d.nombre, c.nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string departamento = reader["departamento"].ToString();
+                        string pais = reader["pais"].ToString();
+                        int usuarios = Convert.ToInt32(reader["usuarios"]);
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            nombre,
+                            departamento,
+                            pais,
+                            usuarios > 0 ? $"[red]{usuarios}[/]" : $"[green]{usuarios}[/]"
+                        );
+                        
+                        // Solo podemos eliminar ciudades sin usuarios asociados
+                        if (usuarios == 0)
+                        {
+                            ciudades.Add($"{nombre} (ID: {id}) - {departamento}, {pais}", id);
+                        }
+                    }
+                }
+            }
+            
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            
+            if (ciudades.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay ciudades disponibles para eliminar. Las ciudades con usuarios asociados no se pueden eliminar.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar ciudad a eliminar
+            var ciudadSeleccionada = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione la ciudad que desea eliminar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(ciudades.Keys));
+            
+            int ciudadId = ciudades[ciudadSeleccionada];
+            
+            // Confirmar eliminación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold red]¿Está seguro de que desea eliminar esta ciudad?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(new[] { "Cancelar", "Eliminar" }));
+            
+            if (confirmar == "Eliminar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Eliminando ciudad...", async ctx => 
+                    {
+                        resultado = await _adminService.EliminarCiudad(ciudadId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Ciudad eliminada exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al eliminar la ciudad. Es posible que tenga usuarios asociados o que haya sido referenciada en otros registros.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         #endregion
@@ -1069,7 +2647,102 @@ namespace campusLove.application.services
         /// </summary>
         public async Task AñadirDepartamento()
         {
-            await MostrarMensajeEnConstruccion("Añadir Departamento");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Añadir Departamento")
+                    .Centered()
+                    .Color(Color.Green));
+            
+            AnsiConsole.WriteLine();
+            
+            // Obtener lista de países
+            var paises = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre FROM paises ORDER BY nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        
+                        paises.Add(nombre, id);
+                    }
+                }
+            }
+            
+            if (paises.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay países registrados. Debe agregar al menos un país antes de crear un departamento.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Solicitar nombre del departamento
+            string nombreDepartamento = AnsiConsole.Ask<string>("[green]Nombre del departamento:[/] ");
+            
+            // Validar nombre
+            if (string.IsNullOrWhiteSpace(nombreDepartamento))
+            {
+                AnsiConsole.MarkupLine("[red]El nombre del departamento no puede estar vacío.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar país
+            var paisSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione el país:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(paises.Keys));
+            
+            int paisId = paises[paisSeleccionado];
+            
+            // Confirmar creación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[bold]¿Confirmar la creación del departamento [green]{nombreDepartamento}[/] para el país [green]{paisSeleccionado}[/]?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Green))
+                    .AddChoices(new[] { "Cancelar", "Confirmar" }));
+            
+            if (confirmar == "Confirmar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Creando departamento...", async ctx => 
+                    {
+                        resultado = await _adminService.AñadirDepartamento(nombreDepartamento, paisId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Departamento creado exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al crear el departamento.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         /// <summary>
@@ -1077,7 +2750,210 @@ namespace campusLove.application.services
         /// </summary>
         public async Task EditarDepartamento()
         {
-            await MostrarMensajeEnConstruccion("Editar Departamento");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Editar Departamento")
+                    .Centered()
+                    .Color(Color.Yellow));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de departamentos existentes
+            AnsiConsole.MarkupLine("[bold]Departamentos existentes:[/]");
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Departamento[/]"));
+            table.AddColumn(new TableColumn("[b]País[/]"));
+            table.AddColumn(new TableColumn("[b]Ciudades[/]").Centered());
+            
+            // Obtener departamentos existentes
+            var departamentos = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT d.id, d.nombre, p.nombre as pais,
+                    (SELECT COUNT(*) FROM ciudades c WHERE c.departamento_id = d.id) as ciudades
+                    FROM departamentos d
+                    JOIN paises p ON d.pais_id = p.id
+                    ORDER BY p.nombre, d.nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string pais = reader["pais"].ToString();
+                        int ciudades = Convert.ToInt32(reader["ciudades"]);
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            nombre,
+                            pais,
+                            ciudades.ToString()
+                        );
+                        
+                        departamentos.Add($"{nombre} (ID: {id}) - {pais}", id);
+                    }
+                }
+            }
+            
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            
+            if (departamentos.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay departamentos registrados para editar.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar departamento a editar
+            var departamentoSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione el departamento que desea editar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(departamentos.Keys));
+            
+            int departamentoId = departamentos[departamentoSeleccionado];
+            
+            // Obtener detalles actuales del departamento seleccionado
+            string nombreActual = "";
+            int paisIdActual = 0;
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT nombre, pais_id FROM departamentos WHERE id = @departamentoId", 
+                    (MySqlConnection)conn);
+                cmd.Parameters.AddWithValue("@departamentoId", departamentoId);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        nombreActual = reader["nombre"].ToString();
+                        paisIdActual = Convert.ToInt32(reader["pais_id"]);
+                    }
+                }
+            }
+            
+            // Solicitar nuevo nombre (o mantener el actual)
+            var nuevoNombre = AnsiConsole.Prompt(
+                new TextPrompt<string>($"[yellow]Nuevo nombre ([grey]actual: {nombreActual}[/]):[/] ")
+                    .AllowEmpty()
+                    .DefaultValue(nombreActual));
+            
+            // Obtener lista de países
+            var paises = new Dictionary<string, int>();
+            string paisActualNombre = "";
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                
+                // Primero obtener el nombre del país actual
+                var cmdPaisActual = new MySqlCommand(
+                    "SELECT nombre FROM paises WHERE id = @paisId", 
+                    (MySqlConnection)conn);
+                cmdPaisActual.Parameters.AddWithValue("@paisId", paisIdActual);
+                
+                using (var reader = await cmdPaisActual.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        paisActualNombre = reader["nombre"].ToString();
+                    }
+                }
+                
+                // Obtener lista completa de países
+                var cmdPaises = new MySqlCommand(
+                    "SELECT id, nombre FROM paises ORDER BY nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmdPaises.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        
+                        paises.Add(nombre, id);
+                    }
+                }
+            }
+            
+            // Mostrar país actual y permitir cambiarlo
+            AnsiConsole.MarkupLine($"[yellow]País actual: [grey]{paisActualNombre}[/][/]");
+            
+            // Preguntar si desea cambiar el país
+            var cambiarPais = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]¿Desea cambiar el país?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(new[] { "No", "Sí" }));
+            
+            int nuevoPaisId = paisIdActual;
+            
+            if (cambiarPais == "Sí")
+            {
+                // Seleccionar nuevo país
+                var paisSeleccionado = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("[bold]Seleccione el nuevo país:[/]")
+                        .PageSize(10)
+                        .HighlightStyle(new Style(foreground: Color.Yellow))
+                        .AddChoices(paises.Keys));
+                
+                nuevoPaisId = paises[paisSeleccionado];
+            }
+            
+            // Confirmar edición
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[bold]¿Confirmar los cambios?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Yellow))
+                    .AddChoices(new[] { "Cancelar", "Confirmar" }));
+            
+            if (confirmar == "Confirmar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Actualizando departamento...", async ctx => 
+                    {
+                        resultado = await _adminService.EditarDepartamento(departamentoId, nuevoNombre, nuevoPaisId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Departamento actualizado exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al actualizar el departamento.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         /// <summary>
@@ -1085,7 +2961,121 @@ namespace campusLove.application.services
         /// </summary>
         public async Task EliminarDepartamento()
         {
-            await MostrarMensajeEnConstruccion("Eliminar Departamento");
+            Console.Clear();
+            
+            // Crear título con Spectre.Console
+            AnsiConsole.Write(
+                new FigletText("Eliminar Departamento")
+                    .Centered()
+                    .Color(Color.Red));
+            
+            AnsiConsole.WriteLine();
+            
+            // Mostrar tabla de departamentos existentes
+            AnsiConsole.MarkupLine("[bold]Departamentos existentes:[/]");
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            
+            // Añadir columnas
+            table.AddColumn(new TableColumn("[b]ID[/]").Centered());
+            table.AddColumn(new TableColumn("[b]Departamento[/]"));
+            table.AddColumn(new TableColumn("[b]País[/]"));
+            table.AddColumn(new TableColumn("[b]Ciudades[/]").Centered());
+            
+            // Obtener departamentos existentes
+            var departamentos = new Dictionary<string, int>();
+            
+            using (var conn = _dbFactory.CreateConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"SELECT d.id, d.nombre, p.nombre as pais,
+                    (SELECT COUNT(*) FROM ciudades c WHERE c.departamento_id = d.id) as ciudades
+                    FROM departamentos d
+                    JOIN paises p ON d.pais_id = p.id
+                    ORDER BY p.nombre, d.nombre", 
+                    (MySqlConnection)conn);
+                
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        int id = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string pais = reader["pais"].ToString();
+                        int ciudades = Convert.ToInt32(reader["ciudades"]);
+                        
+                        table.AddRow(
+                            id.ToString(),
+                            nombre,
+                            pais,
+                            ciudades > 0 ? $"[red]{ciudades}[/]" : $"[green]{ciudades}[/]"
+                        );
+                        
+                        // Solo podemos eliminar departamentos sin ciudades asociadas
+                        if (ciudades == 0)
+                        {
+                            departamentos.Add($"{nombre} (ID: {id}) - {pais}", id);
+                        }
+                    }
+                }
+            }
+            
+            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+            
+            if (departamentos.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No hay departamentos disponibles para eliminar. Los departamentos con ciudades asociadas no se pueden eliminar.[/]");
+                AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+                Console.ReadKey();
+                return;
+            }
+            
+            // Seleccionar departamento a eliminar
+            var departamentoSeleccionado = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold]Seleccione el departamento que desea eliminar:[/]")
+                    .PageSize(10)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(departamentos.Keys));
+            
+            int departamentoId = departamentos[departamentoSeleccionado];
+            
+            // Confirmar eliminación
+            var confirmar = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[bold red]¿Está seguro de que desea eliminar este departamento?[/]")
+                    .PageSize(3)
+                    .HighlightStyle(new Style(foreground: Color.Red))
+                    .AddChoices(new[] { "Cancelar", "Eliminar" }));
+            
+            if (confirmar == "Eliminar")
+            {
+                // Mostrar spinner mientras se procesa
+                var resultado = false;
+                await AnsiConsole.Status()
+                    .StartAsync("Eliminando departamento...", async ctx => 
+                    {
+                        resultado = await _adminService.EliminarDepartamento(departamentoId);
+                    });
+                
+                if (resultado)
+                {
+                    AnsiConsole.MarkupLine("\n[green]Departamento eliminado exitosamente.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("\n[red]Error al eliminar el departamento. Es posible que tenga ciudades asociadas no mostradas o que haya sido referenciado en otros registros.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("\n[yellow]Operación cancelada.[/]");
+            }
+            
+            AnsiConsole.WriteLine("\nPresione cualquier tecla para continuar.");
+            Console.ReadKey();
         }
         
         #endregion
