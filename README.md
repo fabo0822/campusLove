@@ -25,6 +25,7 @@ campusLove/
 │
 ├── domain/                  # Capa de dominio
 │   ├── entities/            # Entidades de negocio
+│   ├── lists/               # Documentación y listas de referencia
 │   ├── models/              # Modelos de datos
 │   ├── ports/               # Interfaces/puertos
 │   └── strategy/            # Implementación del patrón Strategy
